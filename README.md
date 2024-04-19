@@ -9,6 +9,7 @@ go run main.go
 ```
 POST("/login", controllers.Login)
 POST("/signup", controllers.Signup)
+POST("/refresh, controllers.Refresh)
 GET("/home", middlewares.IsAuthorized(), controllers.Home)
 GET("/premium", controllers.Premium)
 GET("/me", middlewares.IsAuthorized(), controllers.Me)
