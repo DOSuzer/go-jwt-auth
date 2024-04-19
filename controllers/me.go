@@ -31,16 +31,11 @@ func Me(c *gin.Context) {
 }
 
 func Update(c *gin.Context) {
+
 	email, ok := c.Get("email")
 
 	if !ok {
 		c.JSON(400, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	var input models.UserNameChange
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(400, gin.H{"error": "Bad request"})
 		return
 	}
 
@@ -50,6 +45,12 @@ func Update(c *gin.Context) {
 
 	if existingUser.ID == 0 {
 		c.JSON(400, gin.H{"error": "user does not exist"})
+		return
+	}
+
+	var input models.UserPatch
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": "Bad request", "message": err.Error()})
 		return
 	}
 

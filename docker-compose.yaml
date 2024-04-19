@@ -11,6 +11,15 @@ services:
       - POSTGRES_DB=test
     networks:
       - postgres-gorm-network
+
+  redis:
+    image: redis:alpine
+    restart: always
+    networks:
+      - postgres-gorm-network
+    ports:
+      - 6379:6379
+
 networks:
   postgres-gorm-network:
     driver: bridge

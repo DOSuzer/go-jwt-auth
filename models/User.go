@@ -10,6 +10,10 @@ type User struct {
 	Role     string `json:"role"`
 }
 
-type UserNameChange struct {
+type UserPatch struct {
 	Name string `json:"name" binding:"required"`
+}
+
+type RefreshToken struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
 }

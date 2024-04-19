@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/DOSuzer/go-jwt-auth/models"
@@ -9,11 +10,10 @@ import (
 	"github.com/DOSuzer/go-jwt-auth/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-// The string "my_secret_key" is just an example and should be replaced with a secret key of sufficient length and complexity in a real-world scenario.
-var jwtKey = []byte(os.Getenv("SECRET_KEY"))
+var secret = os.Getenv("SECRET_KEY")
+var refreshSecret = os.Getenv("REFRESH_SECRET_KEY")
 
 func Login(c *gin.Context) {
 
@@ -40,27 +40,63 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	expirationTime := time.Now().Add(5 * time.Minute)
-
-	claims := &models.Claims{
-		Role: existingUser.Role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   existingUser.Email,
-			ExpiresAt: jwt.NewNumericDate(expirationTime),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	tokenString, err := token.SignedString(jwtKey)
-
+	t, rt, err := utils.CreateTokensForUser(existingUser)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "could not generate token"})
+		c.JSON(500, gin.H{"error": "failed to generate tokens"})
 		return
 	}
 
 	//c.SetCookie("token", tokenString, int(expirationTime.Unix()), "/", "localhost", false, true)
-	c.JSON(200, gin.H{"token": tokenString, "expiration": expirationTime})
+	c.JSON(200, gin.H{"token": t, "refresh_token": rt})
+}
+
+func Refresh(c *gin.Context) {
+	var input models.RefreshToken
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": "Bad request"})
+		return
+	}
+
+	isBlacklisted, err := utils.IsBlacklisted(input.RefreshToken)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not check if token is blacklisted"})
+		return
+	}
+	if isBlacklisted {
+		c.JSON(401, gin.H{"error": "token is blacklisted"})
+		return
+	}
+
+	claims, err := utils.ParseRefreshToken(input.RefreshToken, refreshSecret)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		c.Abort()
+		return
+	}
+
+	err = utils.AddToBlacklist(input.RefreshToken, 7*24*time.Hour)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not add token to blacklist"})
+		return
+	}
+
+	var existingUser models.User
+
+	models.DB.Where("email = ?", claims.Subject).First(&existingUser)
+
+	if existingUser.ID == 0 {
+		c.JSON(400, gin.H{"error": "user does not exist"})
+		return
+	}
+
+	t, rt, err := utils.CreateTokensForUser(existingUser)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to generate tokens"})
+		return
+	}
+
+	//c.SetCookie("token", tokenString, int(expirationTime.Unix()), "/", "localhost", false, true)
+	c.JSON(200, gin.H{"token": t, "refresh_token": rt})
 }
 
 func Signup(c *gin.Context) {
@@ -95,35 +131,6 @@ func Signup(c *gin.Context) {
 
 func Home(c *gin.Context) {
 
-	/**
-	  cookie, err := c.Cookie("token")
-
-	  if err != nil {
-	      c.JSON(401, gin.H{"error": "unauthorized"})
-	      return
-	  }
-
-	  claims, err := utils.ParseToken(cookie)
-
-	token := c.Request.Header.Get("Authorization")
-
-	if token == "" {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	claims, err := utils.ParseToken(token)
-
-	if err != nil {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	if claims.Role != "user" && claims.Role != "admin" {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-	*/
 	role, ok := c.Get("role")
 	if !ok {
 		c.JSON(500, gin.H{"error": "could not get role"})
@@ -133,17 +140,26 @@ func Home(c *gin.Context) {
 
 func Premium(c *gin.Context) {
 
-	token := c.Request.Header.Get("Authorization")
+	authHeader := c.Request.Header.Get("Authorization")
+	t := strings.Split(authHeader, " ")
 
-	if token == "" {
+	if len(t) != 2 {
 		c.JSON(401, gin.H{"error": "unauthorized"})
+		c.Abort()
 		return
 	}
 
-	claims, err := utils.ParseToken(token)
+	token := t[1]
+
+	if token == "" {
+		c.JSON(401, gin.H{"error": "invalid token"})
+		return
+	}
+
+	claims, err := utils.ParseToken(token, secret)
 
 	if err != nil {
-		c.JSON(401, gin.H{"error": "unauthorized"})
+		c.JSON(401, gin.H{"error": "could not parse token", "message": err.Error()})
 		return
 	}
 

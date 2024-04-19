@@ -10,6 +10,7 @@ import (
 func AuthRoutes(r *gin.Engine) {
 	r.POST("/login", controllers.Login)
 	r.POST("/signup", controllers.Signup)
+	r.POST("/refresh", controllers.Refresh)
 	r.GET("/home", middlewares.IsAuthorized(), controllers.Home)
 	r.GET("/premium", controllers.Premium)
 	r.GET("/me", middlewares.IsAuthorized(), controllers.Me)
